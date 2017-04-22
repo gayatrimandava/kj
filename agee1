@@ -1,0 +1,236 @@
+import numpy as np
+import pandas as pd
+from sklearn.naive_bayes import GaussianNB 
+from PIL import Image
+import os
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
+from datetime import datetime
+import time
+import os
+import numpy as np
+import tensorflow as tf
+import re
+from tensorflow.contrib.layers import *
+
+
+
+
+y1=np.genfromtxt('C:/data/project/picage.txt',delimiter=',')
+y_input=y1[:30]
+
+
+a = np.zeros(shape=[len(y_input),100])
+
+for i in range(0,len(y_input)):
+    
+    kkk=y_input[i]
+    kkk=kkk.astype(int)
+    if kkk>100:
+        kkk=100
+    a[i,kkk-1]=1
+
+    
+    
+    
+def appendquotes(s1):
+    return "'" + s1 + "'" 
+
+def jpg_image_to_array(image_path):
+  """
+  Loads JPEG image into 3D Numpy array of shape 
+  (width, height, channels)
+  """
+  with Image.open(image_path) as image: 
+    image = image.resize((256,256),Image.ANTIALIAS)  
+
+    im_arr = np.fromstring(image.tobytes(), dtype=np.uint8)
+    
+    
+    if (len(im_arr) == 196608):
+        meanimage=np.mean(im_arr,axis=0)
+        meanimage=meanimage.astype(int)
+        im_arr -= meanimage
+        #im_arr = im_arr.reshape((image.size[0], image.size[1], 3)) 
+        #if (len(im_arr) == 51529):
+        #im_arr= np.hstack([im_arr]*3)
+    else:
+        im_arr=np.zeros((196608,1))
+      
+
+  return im_arr
+
+#k=jpg_image_to_array('C:/data/project/abcd.jpg')
+
+
+
+x1=np.genfromtxt('C:/data/project/picpaths.txt',dtype='str')
+x_input=x1[:30]
+
+l=[]
+count=0
+
+for i in range(0,len(x_input)):
+    z = np.copy(x_input[i])
+    z=np.array2string(z)
+    z=z.strip("'")
+    #print(z)
+    dir_name='C:/Users/jchin/Desktop/ml project/wiki.tar/wiki'
+    base_filename=z
+    temppath= os.path.join(dir_name, base_filename)
+    #k=jpg_image_to_array(temppath)
+    #l=jpg_image_to_array(temppath)
+    
+    #l=np.append(l,jpg_image_to_array(temppath))
+    #k=np.vstack([k,jpg_image_to_array(temppath)])
+    #k=np.append(k,jpg_image_to_array(temppath))
+    if i==0:
+        l0=jpg_image_to_array(temppath)
+        l=np.reshape(l0, (1,len(l0) ))
+
+
+    else:
+        l1=jpg_image_to_array(temppath)
+        l1=np.reshape(l1, (1,len(l1) ))
+        l=np.vstack((l,l1))
+                    
+            
+
+
+# Parameters
+learning_rate = 0.001
+training_iters = 200
+batch_size = 5
+display_step = 1
+
+# Network Parameters
+n_input = 256*256*3 # MNIST data input (img shape: 28*28)
+print(n_input)
+n_classes = 100 # MNIST total classes (0-9 digits)
+dropout = 0.75 # Dropout, probability to keep units
+
+# tf Graph input
+x = tf.placeholder(tf.float32, [None, n_input])
+y = tf.placeholder(tf.float32, [None, n_classes])
+keep_prob = tf.placeholder(tf.float32) #dropout (keep probability)
+#temp=tf.placeholder(tf.float32,[None,None])
+
+
+# Create some wrappers for simplicity
+def conv2d(x, W, b, strides=1):
+    # Conv2D wrapper, with bias and relu activation
+    x = tf.nn.conv2d(x, W, strides=[1, strides, strides, 1], padding='SAME')
+    x = tf.nn.bias_add(x, b)
+    print("x shape is",x.shape)
+    return tf.nn.relu(x)
+
+
+def maxpool2d(x, k=1):
+    # MaxPool2D wrapper
+    print("reached maxpool")
+    return tf.nn.max_pool(x, ksize=[1, k, k, 1], strides=[1, k, k, 1],
+                          padding='SAME')
+
+
+
+# Create model
+def conv_net(x, weights, biases, dropout):
+    # Reshape input picture
+    print("reached convv")
+
+    x = tf.reshape(x, shape=[-1, 256, 256, 3])
+    # Convolution Layer
+    conv1 = conv2d(x, weights['wc1'], biases['bc1'])
+    # Max Pooling (down-sampling)
+    conv1 = maxpool2d(conv1, k=2)
+    print("conv1 shape",conv1.shape)
+    # Convolution Layer
+    conv2 = conv2d(conv1, weights['wc2'], biases['bc2'])
+
+    # Max Pooling (down-sampling)
+    conv2 = maxpool2d(conv2, k=2)
+    print("conv2 shape",conv2.shape)
+
+    # Fully connected layer
+    # Reshape conv2 output to fit fully connected layer input
+    fc1 = tf.reshape(conv2, [-1, weights['wd1'].get_shape().as_list()[0]])
+    print("fc1 shape",fc1.shape)
+    fc1 = tf.add(tf.matmul(fc1, weights['wd1']), biases['bd1'])
+    print("final fc1 shape",fc1.shape)
+    
+    fc1 = tf.nn.relu(fc1)
+    # Apply Dropout
+    fc1 = tf.nn.dropout(fc1, dropout)
+    print("dropout fc1 shape",fc1.shape)
+
+    # Output, class prediction
+    out = tf.add(tf.matmul(fc1, weights['out']), biases['out'])
+    print("output shape",out.shape)
+    return out
+
+
+
+# Store layers weight & bias
+weights = {
+    # 5x5 conv, 1 input, 32 outputs
+    'wc1': tf.Variable(tf.random_normal([5, 5, 3, 32])),
+    # 5x5 conv, 32 inputs, 64 outputs
+    'wc2': tf.Variable(tf.random_normal([5, 5, 32, 32])),
+    # fully connected, 7*7*64 inputs, 1024 outputs
+    'wd1': tf.Variable(tf.random_normal([64*64*32, 1024])),
+    # 1024 inputs, 10 outputs (class prediction)
+    'out': tf.Variable(tf.random_normal([1024, n_classes]))
+}
+
+biases = {
+    'bc1': tf.Variable(tf.random_normal([32])),
+    'bc2': tf.Variable(tf.random_normal([32])),
+    'bd1': tf.Variable(tf.random_normal([1024])),
+    'out': tf.Variable(tf.random_normal([n_classes]))
+}
+
+# Construct model
+pred = conv_net(x, weights, biases, keep_prob)
+print("predicted shape",pred.shape)
+temp=pred
+# Define loss and optimizer
+cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=pred, labels=y))
+optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost)
+
+# Evaluate model
+correct_pred = tf.equal(tf.argmax(pred, 1), tf.argmax(y, 1))
+accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+
+# Initializing the variables
+init = tf.global_variables_initializer()
+
+
+
+batch_x=l
+batch_y=a
+
+
+
+
+# Launch the graph
+with tf.Session() as sess:
+    sess.run(init)
+    step = 1
+    # Keep training until reach max iteration
+    #print("reached here")
+    # Run optimization op (backprop)
+    #print("reached here")
+    #print(batch_x.shape)
+    #print(batch_y.shape)
+    while step  < 2:
+        a1,b1=sess.run([optimizer,cost], feed_dict={x: batch_x, y: batch_y,keep_prob: dropout})
+        
+        print("Asffasf",b1)
+        step += 1
+    print ("Optimization Finished!")
+
+
+
